@@ -1,183 +1,151 @@
 // server/controllers/ProductController.js
-const Product = require('../models/Product'); // Import Model Sản phẩm
 
-/**
- * @desc    Tạo một Sản phẩm mới
- * @route   POST /api/products
- * @access  Public (Tạm thời)
- */
-exports.createProduct = async (req, res) => {
-    try {
-        // Lấy dữ liệu từ body của request
-        const { name, sku, costPrice, salePrice, stockQuantity, unit } = req.body;
+const asyncHandler = require('express-async-handler');
+const Product = require('../models/Product');
+const { formatErrors } = require('../utils/validationUtils'); // Nếu bạn có file này
 
-        // 1. Kiểm tra các trường bắt buộc (validation cơ bản)
-        if (!name || !sku || !costPrice || !salePrice || !unit) {
-            // Trả về lỗi 400 (Bad Request) nếu thiếu trường
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Vui lòng cung cấp đầy đủ thông tin bắt buộc: tên, SKU, giá nhập, giá bán và đơn vị tính.' 
-            });
-        }
+// @desc Get all Products
+// @route GET /api/products
+// @access Private
+const getProducts = asyncHandler(async (req, res) => {
+    const products = await Product.find().sort({ createdAt: -1 });
+    res.status(200).json({ 
+        message: 'Lấy danh sách sản phẩm thành công',
+        data: products,
+        total: products.length
+    });
+});
 
-        // 2. Tạo sản phẩm mới trong CSDL
-        const product = await Product.create({
-            name,
-            sku,
-            description: req.body.description || '', // Mô tả có thể không bắt buộc
-            costPrice,
-            salePrice,
-            stockQuantity: stockQuantity || 0, // Mặc định là 0 nếu không cung cấp
-            unit
-        });
+// @desc Create New Product
+// @route POST /api/products
+// @access Private
+const createProduct = asyncHandler(async (req, res) => {
+    const { name, sku, description, costPrice, salePrice, unit } = req.body;
 
-        // 3. Trả về sản phẩm vừa tạo với mã 201 (Created)
-        res.status(201).json({ 
-            success: true, 
-            message: 'Tạo sản phẩm thành công.', 
-            data: product 
-        });
-
-    } catch (error) {
-        // Xử lý lỗi CSDL (ví dụ: tên/SKU bị trùng do unique: true)
-        res.status(500).json({ 
-            success: false, 
-            message: 'Tạo sản phẩm thất bại. Có thể Tên hoặc SKU đã bị trùng.', 
-            error: error.message 
-        });
+    // Kiểm tra trường bắt buộc
+    if (!name || !sku || !costPrice || !salePrice || !unit) {
+        res.status(400);
+        throw new Error('Vui lòng nhập đầy đủ các trường bắt buộc (Tên, Mã SKU, Giá nhập, Giá bán, Đơn vị tính).');
     }
-};
-
-/**
- * @desc    Lấy tất cả các Sản phẩm
- * @route   GET /api/products
- * @access  Public
- */
-exports.getProducts = async (req, res) => {
-    try {
-        // Tìm và trả về tất cả sản phẩm
-        const products = await Product.find({}); 
-
-        // Trả về kết quả với mã 200 (OK)
-        res.status(200).json({ 
-            success: true, 
-            count: products.length, 
-            data: products 
-        });
-    } catch (error) {
-        res.status(500).json({ 
-            success: false, 
-            message: 'Lấy danh sách sản phẩm thất bại.', 
-            error: error.message 
-        });
+    
+    // Kiểm tra nếu SKU hoặc Tên đã tồn tại
+    const productExists = await Product.findOne({ $or: [{ sku }, { name }] });
+    if (productExists) {
+        res.status(400);
+        throw new Error('Mã SKU hoặc Tên sản phẩm đã tồn tại.');
     }
-};
-/**
- * @desc    Lấy một Sản phẩm theo ID
- * @route   GET /api/products/:id
- * @access  Public
- */
-exports.getProductById = async (req, res) => {
-    try {
-        // Lấy ID từ tham số URL (ví dụ: /api/products/69383978ea81da8aaaad1741)
-        const product = await Product.findById(req.params.id);
+    
+    // Tạo sản phẩm mới. stockQuantity sẽ được tự động gán là 0 (theo Model).
+    const product = await Product.create({
+        name,
+        sku,
+        description,
+        costPrice: parseFloat(costPrice), // Đảm bảo là số
+        salePrice: parseFloat(salePrice), // Đảm bảo là số
+        unit,
+    });
 
-        // 1. Kiểm tra xem sản phẩm có tồn tại không
-        if (!product) {
-            return res.status(404).json({
-                success: false,
-                message: 'Không tìm thấy sản phẩm với ID này.'
-            });
-        }
-
-        // 2. Trả về sản phẩm tìm được
-        res.status(200).json({
-            success: true,
+    if (product) {
+        res.status(201).json({
+            message: 'Thêm sản phẩm thành công',
             data: product
         });
-    } catch (error) {
-        // Xử lý lỗi nếu ID không hợp lệ (ví dụ: định dạng ID không đúng)
-        if (error.kind === 'ObjectId') {
-             return res.status(400).json({
-                success: false,
-                message: 'ID sản phẩm không hợp lệ.'
-            });
-        }
-        res.status(500).json({
-            success: false,
-            message: 'Lỗi server khi tìm sản phẩm.',
-            error: error.message
-        });
+    } else {
+        res.status(400);
+        throw new Error('Dữ liệu sản phẩm không hợp lệ.');
     }
-};
-/**
- * @desc    Cập nhật Sản phẩm theo ID (Update)
- * @route   PUT /api/products/:id
- * @access  Public
- */
-exports.updateProduct = async (req, res) => {
-    try {
-        const product = await Product.findById(req.params.id);
+});
 
-        if (!product) {
-            return res.status(404).json({
-                success: false,
-                message: 'Không tìm thấy sản phẩm để cập nhật.'
-            });
-        }
 
-        // Dùng findByIdAndUpdate với tùy chọn { new: true } để trả về tài liệu mới
-        const updatedProduct = await Product.findByIdAndUpdate(req.params.id, req.body, {
-            new: true, // Trả về tài liệu đã cập nhật
-            runValidators: true // Chạy lại các validation trong Schema
+// @desc Update Product
+// @route PUT /api/products/:id
+// @access Private
+const updateProduct = asyncHandler(async (req, res) => {
+    const product = await Product.findById(req.params.id);
+
+    if (!product) {
+        res.status(404);
+        throw new Error('Không tìm thấy sản phẩm');
+    }
+
+    // 🛑 LOGIC QUAN TRỌNG: Loại bỏ stockQuantity khỏi dữ liệu cập nhật.
+    const { stockQuantity, ...updateData } = req.body;
+    
+    // 💡 TỐI ƯU: Kiểm tra trùng lặp Tên hoặc SKU trong MỘT truy vấn
+    const checkDuplicateConditions = [];
+    
+    if (updateData.sku && updateData.sku !== product.sku) {
+        checkDuplicateConditions.push({ sku: updateData.sku });
+    }
+    
+    if (updateData.name && updateData.name !== product.name) {
+        checkDuplicateConditions.push({ name: updateData.name });
+    }
+
+    if (checkDuplicateConditions.length > 0) {
+        const duplicateProduct = await Product.findOne({
+            $or: checkDuplicateConditions,
+            _id: { $ne: req.params.id }
         });
 
+        if (duplicateProduct) {
+            res.status(400);
+            const field = (duplicateProduct.sku === updateData.sku) ? 'Mã SKU' : 'Tên sản phẩm';
+            throw new Error(`${field} mới đã được sử dụng bởi sản phẩm khác.`);
+        }
+    }
+    
+    // Đảm bảo các trường giá là số trước khi cập nhật
+    if (updateData.costPrice) updateData.costPrice = parseFloat(updateData.costPrice);
+    if (updateData.salePrice) updateData.salePrice = parseFloat(updateData.salePrice);
+
+
+    const updatedProduct = await Product.findByIdAndUpdate(
+        req.params.id,
+        updateData, // CHỈ SỬ DỤNG DỮ LIỆU ĐÃ LỌC (Không có stockQuantity)
+        { new: true, runValidators: true }
+    );
+
+    if (updatedProduct) {
         res.status(200).json({
-            success: true,
-            message: 'Cập nhật sản phẩm thành công.',
+            message: 'Cập nhật sản phẩm thành công',
             data: updatedProduct
         });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Cập nhật sản phẩm thất bại.',
-            error: error.message
-        });
+    } else {
+        res.status(400);
+        throw new Error('Lỗi cập nhật sản phẩm.');
     }
-};
+});
 
+// @desc Delete Product
+// @route DELETE /api/products/:id
+// @access Private
+const deleteProduct = asyncHandler(async (req, res) => {
+    const product = await Product.findById(req.params.id);
 
-/**
- * @desc    Xóa Sản phẩm theo ID (Delete)
- * @route   DELETE /api/products/:id
- * @access  Public
- */
-exports.deleteProduct = async (req, res) => {
-    try {
-        const product = await Product.findById(req.params.id);
-
-        if (!product) {
-            return res.status(404).json({
-                success: false,
-                message: 'Không tìm thấy sản phẩm để xóa.'
-            });
-        }
-
-        // Xóa sản phẩm
-        await Product.deleteOne({ _id: req.params.id });
-
-        res.status(200).json({
-            success: true,
-            message: 'Xóa sản phẩm thành công.',
-            data: {} // Trả về đối tượng trống để xác nhận xóa
-        });
-
-    } catch (error) {
-         res.status(500).json({
-            success: false,
-            message: 'Xóa sản phẩm thất bại.',
-            error: error.message
-        });
+    if (!product) {
+        res.status(404);
+        throw new Error('Không tìm thấy sản phẩm');
     }
+
+    // LOGIC: KHÔNG CHO XÓA nếu stockQuantity > 0.
+    if (product.stockQuantity > 0) {
+        res.status(400);
+        throw new Error('Không thể xóa sản phẩm khi tồn kho vẫn còn. Vui lòng tạo phiếu xuất kho trước khi xóa.');
+    }
+
+    await Product.deleteOne({ _id: req.params.id });
+
+    res.status(200).json({ 
+        message: 'Xóa sản phẩm thành công',
+        id: req.params.id 
+    });
+});
+
+
+module.exports = {
+    getProducts,
+    createProduct,
+    updateProduct,
+    deleteProduct,
 };

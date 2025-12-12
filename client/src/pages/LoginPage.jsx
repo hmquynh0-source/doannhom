@@ -1,8 +1,8 @@
-// client/src/pages/LoginPage.jsx (ĐÃ FIX - Copy paste hoàn toàn)
+// client/src/pages/LoginPage.jsx (ĐÃ SỬA VÀ BỔ SUNG LIÊN KẾT ĐĂNG KÝ)
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom'; // 💡 FIX 1 & 2: Gộp và thêm Link
 import axios from 'axios';
-import { useAuth } from '../context/AuthContext'; // ✅ FIX: ../contexts/
+import { useAuth } from '../context/AuthContext'; 
 
 const LoginPage = () => {
     const [email, setEmail] = useState('admin@kho.com');
@@ -29,8 +29,8 @@ const LoginPage = () => {
             });
 
             if (response.data.success) {
-                const { token, name, role } = response.data.data;
-                login(token, name); // ✅ FIX: Bỏ role param tạm thời
+                const { token, name } = response.data.data; // Lấy các trường cần thiết
+                login(token, name);
                 navigate(from, { replace: true });
             }
         } catch (err) {
@@ -102,6 +102,7 @@ const LoginPage = () => {
 
                 {/* Login Form */}
                 <form onSubmit={handleSubmit}>
+                    {/* Email Input */}
                     <div style={{ marginBottom: '1.5rem' }}>
                         <label style={{ 
                             display: 'block', 
@@ -130,6 +131,7 @@ const LoginPage = () => {
                         />
                     </div>
 
+                    {/* Password Input */}
                     <div style={{ marginBottom: '2rem' }}>
                         <label style={{ 
                             display: 'block', 
@@ -158,6 +160,7 @@ const LoginPage = () => {
                         />
                     </div>
 
+                    {/* Submit Button */}
                     <button
                         type="submit"
                         disabled={loading}
@@ -177,6 +180,14 @@ const LoginPage = () => {
                         {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
                     </button>
                 </form>
+
+                {/* 💡 THÊM LIÊN KẾT ĐĂNG KÝ MỚI */}
+                <p style={{ textAlign: 'center', marginTop: '1.5rem', fontSize: '0.9rem', color: '#6b7280' }}>
+                    Chưa có tài khoản? 
+                    <Link to="/register" style={{ color: '#4f46e5', textDecoration: 'none', fontWeight: '600', marginLeft: '5px' }}>
+                        Đăng ký ngay
+                    </Link>
+                </p>
 
                 {/* Demo Credentials */}
                 <div style={{ 

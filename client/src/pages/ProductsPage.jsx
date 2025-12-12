@@ -1,630 +1,411 @@
-       // client/src/pages/ProductsPage.jsx - FULL PRO VERSION
-import React, { useState, useEffect } from 'react';
+// client/src/pages/ProductsPage.jsx
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useDataRefresh } from '../context/DataRefreshContext'; 
+import { FaBoxes, FaSearch, FaDollarSign, FaEdit, FaTimes } from 'react-icons/fa';
+
+// --- (HÀM TIỆN ÍCH) ---
+const formatCurrency = (amount) => {
+    // Nếu giá trị là null, undefined, hoặc NaN, trả về '0'
+    if (isNaN(amount) || amount === null || amount === undefined) {
+        return '0';
+    }
+    return new Intl.NumberFormat('vi-VN', { 
+        style: 'decimal',
+        minimumFractionDigits: 0 
+    }).format(amount);
+};
+// -----------------------
 
 const ProductsPage = () => {
-  const { token, logout, userName } = useAuth();
-  
-  // States cơ bản
-  const [products, setProducts] = useState([]);
-  const [filteredProducts, setFilteredProducts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  
-  // Search & Filter states
-  const [searchTerm, setSearchTerm] = useState('');
-  const [stockFilter, setStockFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('name');
-  const [sortOrder, setSortOrder] = useState('asc');
-  const [currentPage, setCurrentPage] = useState(1);
-  const productsPerPage = 10;
+    const { token } = useAuth();
+    const { refreshSignal } = useDataRefresh(); 
+    
+    const [products, setProducts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [error, setError] = useState(null);
+    
+    const [isModalOpen, setIsModalOpen] = useState(false); // Modal Sửa
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false); // Modal Thêm Mới
+    const [currentProduct, setCurrentProduct] = useState(null); 
 
-  // Modal states
-  const [showModal, setShowModal] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [currentProduct, setCurrentProduct] = useState({
-    _id: null, name: '', unit: '', price: 0, quantity: 0
-  });
-  const [submitLoading, setSubmitLoading] = useState(false);
+    // ------------------------------------------
+    // HÀM TẢI DỮ LIỆU SẢN PHẨM
+    // ------------------------------------------
+    const fetchProducts = async () => {
+        setLoading(true);
+        setError(null);
+        try {
+            const res = await axios.get('/api/products', { 
+                headers: { Authorization: `Bearer ${token}` } 
+            });
+            setProducts(res.data.data || []);
+        } catch (err) {
+            console.error('Products fetch error:', err);
+            setError('Không thể tải dữ liệu sản phẩm.');
+        } finally {
+            setLoading(false);
+        }
+    };
 
-  // Fetch products
-  const fetchProducts = async () => {
-    try {
-      const response = await axios.get('/api/products', { 
-        headers: { Authorization: `Bearer ${token}` } 
-      });
-      setProducts(response.data.data || []);
-      setFilteredProducts(response.data.data || []);
-      setLoading(false);
-      setError(null);
-    } catch (err) {
-      setError('Lỗi kết nối server');
-      setLoading(false);
-    }
-  };
+    useEffect(() => {
+        fetchProducts();
+    }, [token, refreshSignal]); 
 
-  useEffect(() => {
-    fetchProducts();
-  }, [token]);
+    // ------------------------------------------
+    // LOGIC TẠO SẢN PHẨM MỚI
+    // ------------------------------------------
+    const handleCreateProduct = async (productData) => {
+        try {
+            await axios.post('/api/products', productData, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
 
-  // Search & Filter logic
-  useEffect(() => {
-    let filtered = [...products];
+            alert('✅ Tạo sản phẩm mới thành công!');
+            setIsCreateModalOpen(false);
+            fetchProducts();
+        } catch (err) {
+            console.error('Create error:', err);
+            alert(`❌ Lỗi tạo sản phẩm: ${err.response?.data?.message || 'Vui lòng kiểm tra lại.'}`);
+        }
+    };
 
-    // Search by name
-    if (searchTerm) {
-      filtered = filtered.filter(p => 
-        p.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
+    // ------------------------------------------
+    // LOGIC SỬA SẢN PHẨM
+    // ------------------------------------------
+    const handleEdit = (product) => {
+        setCurrentProduct({
+            _id: product._id,
+            name: product.name,
+            sku: product.sku || '',
+            // 💡 SỬA LỖI: Dùng salePrice và costPrice
+            salePrice: product.salePrice || 0,
+            costPrice: product.costPrice || 0,
+            unit: product.unit || ''
+        });
+        setIsModalOpen(true);
+    };
 
-    // Stock filter
-    if (stockFilter === 'low') {
-      filtered = filtered.filter(p => p.quantity <= 5 && p.quantity > 0);
-    } else if (stockFilter === 'out') {
-      filtered = filtered.filter(p => p.quantity === 0);
-    }
+    const handleUpdateProduct = async (e) => {
+        e.preventDefault();
+        
+        if (!currentProduct || !currentProduct._id) {
+            alert('❌ Lỗi: ID sản phẩm không hợp lệ.');
+            return;
+        }
 
-    // Sorting
-    filtered.sort((a, b) => {
-      let aVal = a[sortBy];
-      let bVal = b[sortBy];
-      if (sortBy === 'price') {
-        aVal = Number(aVal);
-        bVal = Number(bVal);
-      }
-      if (sortOrder === 'asc') {
-        return aVal > bVal ? 1 : -1;
-      } else {
-        return aVal < bVal ? 1 : -1;
-      }
-    });
+        try {
+            const updateData = {
+                name: currentProduct.name,
+                sku: currentProduct.sku,
+                // 💡 SỬA LỖI: Dùng salePrice và costPrice
+                salePrice: parseFloat(currentProduct.salePrice), 
+                costPrice: parseFloat(currentProduct.costPrice),
+                unit: currentProduct.unit,
+            };
 
-    setFilteredProducts(filtered);
-    setCurrentPage(1);
-  }, [searchTerm, stockFilter, sortBy, sortOrder, products]);
+            await axios.put(`/api/products/${currentProduct._id}`, updateData, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
 
-  // Pagination
-  const indexOfLastProduct = currentPage * productsPerPage;
-  const indexOfFirstProduct = indexOfLastProduct - productsPerPage;
-  const currentProducts = filteredProducts.slice(indexOfFirstProduct, indexOfLastProduct);
-  const totalPages = Math.ceil(filteredProducts.length / productsPerPage);
+            alert('✅ Cập nhật sản phẩm thành công!');
+            
+        } catch (err) {
+            console.error('Update error:', err);
+            alert(`❌ Lỗi cập nhật sản phẩm: ${err.response?.data?.message || 'Vui lòng kiểm tra lại.'}`);
+        } finally {
+            setIsModalOpen(false);
+            setCurrentProduct(null); 
+            fetchProducts(); 
+        }
+    };
 
-  // CRUD functions
-  const handleDelete = async (id) => {
-    if (window.confirm('Xóa sản phẩm này?')) {
-      try {
-        await axios.delete(`/api/products/${id}`, { 
-          headers: { Authorization: `Bearer ${token}` } 
-        });
-        fetchProducts();
-        alert('✅ Xóa thành công!');
-      } catch (err) {
-        alert('❌ Lỗi xóa sản phẩm');
-      }
-    }
-  };
+    // ------------------------------------------
+    // LOGIC XÓA SẢN PHẨM
+    // ------------------------------------------
+    const handleDelete = async (productId, productName) => {
+        if (!window.confirm(`Bạn có chắc chắn muốn xóa sản phẩm: ${productName}?`)) {
+            return;
+        }
 
-  const handleOpenCreate = () => {
-    setIsEditing(false);
-    setCurrentProduct({ _id: null, name: '', unit: '', price: 0, quantity: 0 });
-    setShowModal(true);
-    setError(null);
-  };
+        try {
+            await axios.delete(`/api/products/${productId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            alert('✅ Xóa sản phẩm thành công!');
+            fetchProducts();
+        } catch (err) {
+            console.error('Delete error:', err);
+            alert(`❌ Lỗi xóa sản phẩm: ${err.response?.data?.message || 'Không thể xóa sản phẩm.'}`);
+        }
+    };
 
-  const handleOpenEdit = (product) => {
-    setIsEditing(true);
-    setCurrentProduct({ ...product, price: Number(product.price), quantity: Number(product.quantity) });
-    setShowModal(true);
-    setError(null);
-  };
+    // ------------------------------------------
+    // LOGIC TÌM KIẾM & THỐNG KÊ
+    // ------------------------------------------
+    const filteredProducts = useMemo(() => {
+        if (!searchTerm) {
+            return products;
+        }
+        const lowerSearch = searchTerm.toLowerCase();
+        
+        return products.filter(p => 
+            p.name.toLowerCase().includes(lowerSearch) || 
+            (p.sku && p.sku.toLowerCase().includes(lowerSearch))
+        );
+    }, [products, searchTerm]);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitLoading(true);
-    setError(null);
+    const { totalItems, totalInventoryValue } = useMemo(() => {
+        // 💡 SỬA LỖI: Dùng p.stockQuantity (thay vì p.quantity)
+        const totalItems = products.reduce((sum, p) => sum + (p.stockQuantity || 0), 0);
+        // 💡 SỬA LỖI: Dùng p.stockQuantity * p.salePrice (thay vì p.quantity * p.price)
+        const totalInventoryValue = products.reduce((sum, p) => 
+            sum + ((p.stockQuantity || 0) * (p.salePrice || 0)), 0); 
+        return { totalItems, totalInventoryValue };
+    }, [products]);
 
-    try {
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      if (isEditing) {
-        await axios.put(`/api/products/${currentProduct._id}`, currentProduct, config);
-        alert('✅ Cập nhật thành công!');
-      } else {
-        await axios.post('/api/products', currentProduct, config);
-        alert('✅ Thêm sản phẩm thành công!');
-      }
-      fetchProducts();
-      setShowModal(false);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Lỗi lưu sản phẩm');
-    } finally {
-      setSubmitLoading(false);
-    }
-  };
 
-  if (loading) {
-    return (
-      <div style={{ padding: '50px', textAlign: 'center', fontSize: '1.5rem', color: '#6b7280' }}>
-        ⏳ Đang tải dữ liệu kho hàng...
-      </div>
-    );
-  }
+    if (loading) return <div style={{ padding: '4rem', textAlign: 'center' }}>⏳ Đang tải dữ liệu sản phẩm...</div>;
+    if (error) return <div style={{ color: 'red', padding: '4rem', textAlign: 'center' }}>🚨 {error}</div>;
 
-  if (error && !showModal) {
-    return (
-      <div style={{ padding: '50px', textAlign: 'center', color: '#dc2626' }}>
-        ❌ {error}
-        <br />
-        <button onClick={fetchProducts} style={{ marginTop: '20px', padding: '10px 20px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
-          🔄 Thử lại
-        </button>
-      </div>
-    );
-  }
+    return (
+        <div style={{ padding: '20px' }}>
+            <h1 style={{ fontSize: '2.5rem', marginBottom: '1.5rem', borderBottom: '2px solid #e5e7eb', paddingBottom: '10px' }}>
+                📦 Quản lý Sản phẩm & Tồn kho
+            </h1>
+            
+            {/* THỐNG KÊ */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' }}>
+                <Card icon={<FaBoxes />} title="Tổng số mặt hàng" value={products.length} color="#3b82f6" />
+                <Card icon={<FaBoxes />} title="Tổng số lượng tồn" value={formatCurrency(totalItems)} color="#10b981" />
+                <Card icon={<FaDollarSign />} title="Tổng Giá trị tồn kho" value={`${formatCurrency(totalInventoryValue)} VNĐ`} color="#f59e0b" />
+            </div>
 
-  // Stats calculations
-  const totalValue = products.reduce((sum, p) => sum + (Number(p.price) * Number(p.quantity)), 0);
-  const lowStock = products.filter(p => Number(p.quantity) <= 5 && Number(p.quantity) > 0).length;
-  const outOfStock = products.filter(p => Number(p.quantity) === 0).length;
-
-  return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '2.5rem', color: '#1f2937', fontWeight: 'bold' }}>
-            📦 Quản lý Sản phẩm
-          </h1>
-          <p style={{ margin: '0.5rem 0 0 0', color: '#6b7280', fontSize: '1.1rem' }}>
-            ({filteredProducts.length} / {products.length} sản phẩm hiển thị)
-          </p>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button 
-            onClick={handleOpenCreate} 
-            style={{ 
-              padding: '0.75rem 1.5rem', background: '#10b981', color: 'white', 
-              border: 'none', borderRadius: '12px', fontWeight: '600', fontSize: '1rem',
-              cursor: 'pointer', boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
-              transition: 'all 0.2s'
-            }}
-            onMouseOver={(e) => e.target.style.transform = 'translateY(-2px)'}
-            onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}
-          >
-            ➕ Thêm sản phẩm mới
-          </button>
-          <span style={{ color: '#4b5563', fontWeight: 500, fontSize: '1.1rem' }}>
-            Xin chào, {userName}
-          </span>
-          <button 
-            onClick={logout} 
-            style={{ 
-              padding: '0.75rem 1.25rem', background: '#ef4444', color: 'white', 
-              border: 'none', borderRadius: '12px', fontWeight: '500', cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            🚪 Đăng xuất
-          </button>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div style={{ 
-        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
-        gap: '1.5rem', marginBottom: '2rem' 
-      }}>
-        <div style={{ 
-          background: 'linear-gradient(135deg, #10b981, #059669)', color: 'white', 
-          padding: '2rem', borderRadius: '20px', textAlign: 'center',
-          boxShadow: '0 20px 40px rgba(16,185,129,0.3)', cursor: 'pointer',
-          transition: 'all 0.3s'
-        }} onMouseOver={(e) => e.target.style.transform = 'translateY(-8px)'} 
-           onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}>
-          <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>📦</div>
-          <div style={{ fontSize: '2.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-            {products.length}
-          </div>
-          <div style={{ fontSize: '1.1rem', opacity: 0.95 }}>Tổng sản phẩm</div>
-        </div>
-       <div style={{ 
-          background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: 'white', 
-          padding: '2rem', borderRadius: '20px', textAlign: 'center',
-          boxShadow: '0 20px 40px rgba(245,158,11,0.3)', cursor: 'pointer',
-          transition: 'all 0.3s'
-        }} onMouseOver={(e) => e.target.style.transform = 'translateY(-8px)'} 
-           onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}>
-          <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>⚠️</div>
-          <div style={{ fontSize: '2.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-            {lowStock}
-          </div>
-          <div style={{ fontSize: '1.1rem', opacity: 0.95 }}>Hàng sắp hết</div>
-        </div>
-
-        <div style={{ 
-          background: 'linear-gradient(135deg, #ef4444, #dc2626)', color: 'white', 
-          padding: '2rem', borderRadius: '20px', textAlign: 'center',
-          boxShadow: '0 20px 40px rgba(239,68,68,0.3)', cursor: 'pointer',
-          transition: 'all 0.3s'
-        }} onMouseOver={(e) => e.target.style.transform = 'translateY(-8px)'} 
-           onMouseOut={(e) => e.target.style.transform = 'translateY(0)'}>
-          <div style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>💰</div>
-          <div style={{ fontSize: '2.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-            ₫{totalValue.toLocaleString()}
-          </div>
-          <div style={{ fontSize: '1.1rem', opacity: 0.95 }}>Giá trị tồn kho</div>
-        </div>
-      </div>
-
-      {/* Search & Filter Controls */}
-      <div style={{ 
-        display: 'flex', gap: '1rem', marginBottom: '2rem', 
-        flexWrap: 'wrap', alignItems: 'center',
-        background: 'white', padding: '1.5rem', borderRadius: '16px',
-        boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
-      }}>
-        <input
-          type="text"
-          placeholder="🔍 Tìm kiếm theo tên sản phẩm..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{
-            padding: '1rem 1.5rem', border: '2px solid #e5e7eb',
-            borderRadius: '12px', fontSize: '1rem', minWidth: '300px',
-            outline: 'none', transition: 'border-color 0.2s'
-          }}
-          onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-          onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-        />
-        
-        <select 
-          value={stockFilter} 
-          onChange={(e) => setStockFilter(e.target.value)}
-          style={{
-            padding: '1rem 1.5rem', border: '2px solid #e5e7eb',
-            borderRadius: '12px', fontSize: '1rem', background: 'white',
-            cursor: 'pointer'
-          }}
-        >
-          <option value="all">📋 Tất cả sản phẩm</option>
-          <option value="low">⚠️ Sắp hết hàng (≤ 5)</option>
-          <option value="out">❌ Hết hàng</option>
-        </select>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 500 }}>
-          <span>Sắp xếp:</span>
-          <select 
-            value={sortBy} 
-            onChange={(e) => setSortBy(e.target.value)}
-            style={{ padding: '0.75rem 1rem', border: '2px solid #e5e7eb', borderRadius: '8px' }}
-          >
-            <option value="name">Tên sản phẩm</option>
-            <option value="price">Giá bán</option>
-            <option value="quantity">Tồn kho</option>
-          </select>
-          <button 
-            onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-            style={{
-              padding: '0.75rem 1rem', background: '#3b82f6', color: 'white',
-              border: 'none', borderRadius: '8px', cursor: 'pointer',
-              fontWeight: 'bold'
-            }}
-          >
-            {sortOrder === 'asc' ? '⬆️ Tăng dần' : '⬇️ Giảm dần'}
-          </button>
-        </div>
-      </div>
-
-      {/* Products Table */}
-      <div style={{ 
-        background: 'white', borderRadius: '16px', 
-        boxShadow: '0 20px 40px rgba(0,0,0,0.1)', overflow: 'hidden',
-        marginBottom: '2rem'
-      }}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)' }}>
-                <th style={{ padding: '1.5rem 1rem', textAlign: 'left', fontWeight: 600, color: '#374151', fontSize: '1.1rem' }}>
-                  Tên sản phẩm
-                </th>
-                <th style={{ padding: '1.5rem 1rem', textAlign: 'left', fontWeight: 600, color: '#374151', fontSize: '1.1rem' }}>
-                  Đơn vị
-                </th>
-                <th style={{ padding: '1.5rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151', fontSize: '1.1rem' }}>
-                  Giá bán
-                </th>
-                <th style={{ padding: '1.5rem 1rem', textAlign: 'right', fontWeight: 600, color: '#374151', fontSize: '1.1rem' }}>
-                  Tồn kho
-                </th>
-                <th style={{ padding: '1.5rem 1rem', textAlign: 'center', fontWeight: 600, color: '#374151', fontSize: '1.1rem' }}>
-                  Thao tác
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentProducts.length === 0 ? (
-                <tr>
-                  <td colSpan="5" style={{ 
-                    padding: '4rem 2rem', textAlign: 'center', 
-                    color: '#6b7280', fontSize: '1.2rem' 
-                  }}>
-                    📦 {searchTerm || stockFilter !== 'all' ? 'Không tìm thấy sản phẩm' : 'Kho hàng trống'}
-                    <br />
+            <div style={{ background: 'white', padding: '2rem', borderRadius: '20px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)' }}>
+                
+                {/* THANH TÌM KIẾM VÀ NÚT THÊM */}
+                <div style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', maxWidth: '400px' }}>
+                        <FaSearch style={{ marginRight: '10px', color: '#9ca3af' }} />
+                        <input
+                            type="text"
+                            placeholder="Tìm kiếm theo Tên hoặc Mã SKU..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            style={searchInputStyle}
+                        />
+                    </div>
+                    {/* 💡 Nút Thêm mới */}
                     <button 
-                      onClick={handleOpenCreate} 
-                      style={{ 
-                        marginTop: '1rem', padding: '0.75rem 1.5rem', 
-                        background: '#10b981', color: 'white', border: 'none', 
-                        borderRadius: '12px', fontSize: '1rem', cursor: 'pointer' 
-                      }}
+                        onClick={() => setIsCreateModalOpen(true)} 
+                        style={createButtonStyle} 
+                        title="Thêm sản phẩm mới"
                     >
-                      ➕ Thêm sản phẩm đầu tiên
+                        + Thêm sản phẩm mới
                     </button>
-                  </td>
-                </tr>
-              ) : (
-                currentProducts.map((product, index) => (
-                  <tr key={product._id} style={{ 
-                    backgroundColor: index % 2 === 0 ? '#f9fafb' : 'white',
-                    transition: 'background-color 0.2s'
-                  }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f0f9ff'}
-                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = index % 2 === 0 ? '#f9fafb' : 'white'}>
-                    <td style={{ padding: '1.5rem 1rem', fontWeight: 500 }}>{product.name}</td>
-                    <td style={{ padding: '1.5rem 1rem', color: '#6b7280' }}>{product.unit}</td>
-                    <td style={{ padding: '1.5rem 1rem', textAlign: 'right', fontWeight: 600, color: '#059669' }}>
-                      ₫{Number(product.price).toLocaleString()}
-                    </td>
-                    <td style={{ padding: '1.5rem 1rem', textAlign: 'center' }}>
-                      <span style={{
-                        padding: '0.75rem 1.5rem', borderRadius: '999px', fontWeight: 'bold',
-                        fontSize: '1rem',
-                        backgroundColor: Number(product.quantity) === 0 ? '#fee2e2' : 
-                                        Number(product.quantity) <= 5 ? '#fed7aa' : '#d1fae5',
-                        color: Number(product.quantity) === 0 ? '#991b1b' : 
-                               Number(product.quantity) <= 5 ? '#c2410c' : '#065f46'
-                      }}>
-                        {product.quantity}
-                      </span>
-                    </td>
-                    <td style={{ padding: '1.5rem 1rem', textAlign: 'center' }}>
-                      <button 
-                        onClick={() => handleOpenEdit(product)}
-                        style={{
-                          padding: '0.75rem 1.5rem', background: '#3b82f6', color: 'white',
-                          border: 'none', borderRadius: '10px', marginRight: '0.75rem',
-                          fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
-                        }}
-                        onMouseOver={(e) => {
-                          e.target.style.background = '#2563eb';
-                          e.target.style.transform = 'translateY(-2px)';
-                        }}
-                        onMouseOut={(e) => {
-                          e.target.style.background = '#3b82f6';
-                          e.target.style.transform = 'translateY(0)';
-                        }}
-                      >
-                        ✏️ Sửa
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(product._id)}
-                        style={{
-                          padding: '0.75rem 1.5rem', background: '#ef4444', color: 'white',
-                          border: 'none', borderRadius: '10px', fontWeight: 600, cursor: 'pointer',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseOver={(e) => {
-                          e.target.style.background = '#dc2626';
-                          e.target.style.transform = 'translateY(-2px)';
-                        }}
-                        onMouseOut={(e) => {
-                          e.target.style.background = '#ef4444';
-                          e.target.style.transform = 'translateY(0)';
-                        }}
-                      >
-                        🗑️ Xóa
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{ 
-          display: 'flex', justifyContent: 'center', alignItems: 'center', 
-          gap: '1rem', padding: '2rem', background: 'white', 
-          borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' 
-        }}>
-          <button 
-            onClick={() => setCurrentPage(currentPage - 1)}
-            disabled={currentPage === 1}
-            style={{
-              padding: '1rem 1.5rem', border: '2px solid #e5e7eb', background: 'white',
-              borderRadius: '12px', fontWeight: 600, cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-              opacity: currentPage === 1 ? 0.5 : 1
-            }}
-          >
-            ← Trang trước
-          </button>
-          <span style={{ fontSize: '1.2rem', fontWeight: 600, color: '#374151' }}>
-            Trang {currentPage} / {totalPages} ({filteredProducts.length} sản phẩm)
-          </span>
-          <button 
-            onClick={() => setCurrentPage(currentPage + 1)}
-            disabled={currentPage === totalPages}
-            style={{
-              padding: '1rem 1.5rem', border: '2px solid #e5e7eb', background: 'white',
-              borderRadius: '12px', fontWeight: 600, cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-              opacity: currentPage === totalPages ? 0.5 : 1
-            }}
-          >
-            Trang sau →
-          </button>
-        </div>
-      )}
+                
+                {/* BẢNG SẢN PHẨM */}
+                <ProductsTable products={filteredProducts} onEdit={handleEdit} onDelete={handleDelete} />
+            </div>
 
-      {/* MODAL - FULL CRUD FORM */}
-      {showModal && (
-        <div style={{
-          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center',
-          justifyContent: 'center', zIndex: 1000, padding: '2rem'
-        }}>
-          <div style={{
-            background: 'white', padding: '3rem', borderRadius: '20px',
-            maxWidth: '500px', width: '100%', maxHeight: '90vh', overflowY: 'auto',
-            boxShadow: '0 25px 50px rgba(0,0,0,0.25)'
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-              <h2 style={{ margin: 0, fontSize: '1.8rem', color: '#1f2937' }}>
-                {isEditing ? '✏️ Sửa sản phẩm' : '➕ Thêm sản phẩm mới'}
-              </h2>
-              <button 
-                onClick={() => setShowModal(false)}
-                style={{
-                  background: 'none', border: 'none', fontSize: '2rem',
-                  cursor: 'pointer', color: '#6b7280', padding: 0
-                }}
-              >
-                ×
-              </button>
-            </div>
+            {/* MODAL SỬA SẢN PHẨM */}
+            {isModalOpen && currentProduct && (
+                <EditProductModal 
+                    product={currentProduct}
+                    onClose={() => {
+                        setIsModalOpen(false); 
+                        setCurrentProduct(null); 
+                    }}
+                    onUpdate={handleUpdateProduct}
+                    setCurrentProduct={setCurrentProduct}
+                />
+            )}
 
-            {error && (
-              <div style={{
-                background: '#fee2e2', color: '#991b1b', padding: '1rem',
-                borderRadius: '8px', marginBottom: '1.5rem', borderLeft: '4px solid #ef4444'
-              }}>
-                ❌ {error}
-              </div>
+            {/* MODAL THÊM SẢN PHẨM MỚI */}
+            {isCreateModalOpen && (
+                <CreateProductModal 
+                    onClose={() => setIsCreateModalOpen(false)}
+                    onCreate={handleCreateProduct}
+                />
             )}
-
-            <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, color: '#374151' }}>
-                  Tên sản phẩm *
-                </label>
-                <input
-                  type="text"
-                  value={currentProduct.name}
-                  onChange={(e) => setCurrentProduct({ ...currentProduct, name: e.target.value })}
-                  required
-                  style={{
-                    width: '100%', padding: '1rem 1.25rem', border: '2px solid #e5e7eb',
-                    borderRadius: '12px', fontSize: '1rem', outline: 'none',
-                    transition: 'border-color 0.2s'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                  placeholder="VD: iPhone 15 Pro Max"
-                />
-              </div>
-
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, color: '#374151' }}>
-                  Đơn vị tính *
-                </label>
-                <input
-                  type="text"
-                  value={currentProduct.unit}
-                  onChange={(e) => setCurrentProduct({ ...currentProduct, unit: e.target.value })}
-                  required
-                  style={{
-                    width: '100%', padding: '1rem 1.25rem', border: '2px solid #e5e7eb',
-                    borderRadius: '12px', fontSize: '1rem', outline: 'none',
-                    transition: 'border-color 0.2s'
-                  }}
-                  onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                  onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                  placeholder="VD: Cái, Hộp, Kg"
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '2rem' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, color: '#374151' }}>
-                    Giá bán (VNĐ) *
-                  </label>
-                  <input
-                    type="number"
-                    value={currentProduct.price}
-                    onChange={(e) => setCurrentProduct({ ...currentProduct, price: Number(e.target.value) })}
-                    required
-                    min="0"
-                    style={{
-                      width: '100%', padding: '1rem 1.25rem', border: '2px solid #e5e7eb',
-                      borderRadius: '12px', fontSize: '1rem', outline: 'none',
-                      transition: 'border-color 0.2s'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, color: '#374151' }}>
-                    Số lượng tồn kho *
-                  </label>
-                  <input
-                    type="number"
-                    value={currentProduct.quantity}
-                    onChange={(e) => setCurrentProduct({ ...currentProduct, quantity: Number(e.target.value) })}
-                    required
-                    min="0"
-                    style={{
-                      width: '100%', padding: '1rem 1.25rem', border: '2px solid #e5e7eb',
-                      borderRadius: '12px', fontSize: '1rem', outline: 'none',
-                      transition: 'border-color 0.2s'
-                    }}
-                    onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                    onBlur={(e) => e.target.style.borderColor = '#e5e7eb'}
-                    placeholder="0"
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  disabled={submitLoading}
-                  style={{
-                    padding: '1rem 2rem', background: '#6b7280', color: 'white',
-                    border: 'none', borderRadius: '12px', fontSize: '1rem',
-                    fontWeight: 600, cursor: submitLoading ? 'not-allowed' : 'pointer',
-                    opacity: submitLoading ? 0.7 : 1
-                  }}
-                >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitLoading}
-                  style={{
-                    padding: '1rem 2rem', background: '#10b981', color: 'white',
-                    border: 'none', borderRadius: '12px', fontSize: '1rem',
-                    fontWeight: 600, cursor: submitLoading ? 'not-allowed' : 'pointer',
-                    boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
-                    transition: 'all 0.2s', opacity: submitLoading ? 0.7 : 1
-                  }}
-                >
-                  {submitLoading ? '⏳ Đang lưu...' : (isEditing ? '💾 Cập nhật' : '➕ Thêm mới')}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+        </div>
+    );
 };
 
+// --- COMPONENT CON & STYLES ---
+
+const Card = ({ icon, title, value, color }) => (
+    <div style={{ background: 'white', padding: '1.5rem', borderRadius: '15px', boxShadow: `0 10px 20px rgba(0,0,0,0.05), 0 0 0 4px ${color}1A`, borderLeft: `5px solid ${color}`, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+        <div style={{ color, fontSize: '2rem', marginBottom: '10px' }}>{icon}</div>
+        <p style={{ margin: '0 0 5px 0', color: '#6b7280', fontSize: '0.9rem', fontWeight: 500 }}>{title}</p>
+        <h2 style={{ margin: '0', fontSize: '1.5rem', color: '#1f2937' }}>{value}</h2>
+    </div>
+);
+
+const ProductsTable = ({ products, onEdit, onDelete }) => {
+    return (
+        <table style={tableStyle}>
+            <thead>
+                <tr style={tableHeaderRowStyle}>
+                    <th style={tableHeaderStyle}>Mã SKU</th>
+                    <th style={tableHeaderStyle}>Tên Sản phẩm</th>
+                    <th style={tableHeaderStyle}>Đơn vị</th>
+                    <th style={{...tableHeaderStyle, textAlign: 'right'}}>Tồn kho</th>
+                    <th style={{...tableHeaderStyle, textAlign: 'right'}}>Giá bán</th>
+                    <th style={{...tableHeaderStyle, textAlign: 'right'}}>Giá trị tồn</th>
+                    <th style={{...tableHeaderStyle, textAlign: 'center'}}>Hành động</th> 
+                </tr>
+            </thead>
+            <tbody>
+                {products.map((p, i) => {
+                    // 💡 SỬA LỖI: Dùng p.stockQuantity * p.salePrice
+                    const inventoryValue = (p.stockQuantity || 0) * (p.salePrice || 0);
+                    return (
+                        <tr key={p._id || i} style={tableRowStyle(i)}>
+                            <td style={tableCellStyle}>{p.sku || 'N/A'}</td> 
+                            <td style={{...tableCellStyle, fontWeight: 600}}>{p.name}</td>
+                            <td style={tableCellStyle}>{p.unit}</td>
+                            {/* 💡 SỬA LỖI: Dùng p.stockQuantity */}
+                            <td style={{...tableCellStyle, textAlign: 'right', fontWeight: 600}}>{formatCurrency(p.stockQuantity)}</td> 
+                            {/* 💡 SỬA LỖI: Dùng p.salePrice */}
+                            <td style={{...tableCellStyle, textAlign: 'right'}}>{formatCurrency(p.salePrice)} VNĐ</td> 
+                            <td style={{...tableCellStyle, textAlign: 'right', color: '#059669', fontWeight: 600}}>
+                                {formatCurrency(inventoryValue)} VNĐ
+                            </td>
+                            <td style={{...tableCellStyle, textAlign: 'center'}}>
+                                <button 
+                                    onClick={() => onEdit(p)} 
+                                    style={editButtonStyle}
+                                    title="Chỉnh sửa sản phẩm"
+                                >
+                                    <FaEdit />
+                                </button>
+                                {/* 💡 NÚT XÓA */}
+                                <button 
+                                    onClick={() => onDelete(p._id, p.name)} 
+                                    style={deleteButtonStyle}
+                                    title="Xóa sản phẩm"
+                                >
+                                    <FaTimes />
+                                </button>
+                            </td>
+                        </tr>
+                    )
+                })}
+            </tbody>
+        </table>
+    );
+};
+
+const EditProductModal = ({ product, onClose, onUpdate, setCurrentProduct }) => (
+    <div style={modalBackdropStyle}>
+        <div style={modalContentStyle}>
+            <div style={modalHeaderStyle}>
+                <h3 style={{ margin: 0 }}>✏️ Chỉnh sửa Sản phẩm</h3>
+                <button onClick={onClose} style={closeButtonStyle}><FaTimes /></button>
+            </div>
+            <form onSubmit={onUpdate} style={{ display: 'grid', gap: '15px' }}>
+                <input type="text" value={product.name} onChange={(e) => setCurrentProduct({...product, name: e.target.value})} placeholder="Tên sản phẩm" required style={modalInputStyle} />
+                <input type="text" value={product.sku} onChange={(e) => setCurrentProduct({...product, sku: e.target.value})} placeholder="Mã SKU" style={modalInputStyle} />
+                
+                {/* 💡 SỬA LỖI: Dùng costPrice */}
+                <input 
+                    type="number" 
+                    value={product.costPrice} 
+                    onChange={(e) => setCurrentProduct({...product, costPrice: e.target.value})} 
+                    placeholder="Giá nhập/vốn (Cost Price)" 
+                    min="0" 
+                    required 
+                    style={modalInputStyle} 
+                />
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                    {/* 💡 SỬA LỖI: Dùng salePrice */}
+                    <input 
+                        type="number" 
+                        value={product.salePrice} 
+                        onChange={(e) => setCurrentProduct({...product, salePrice: e.target.value})} 
+                        placeholder="Giá bán (Sale Price)" 
+                        min="0" 
+                        required 
+                        style={{...modalInputStyle, flex: 1}} 
+                    /> 
+                    <input type="text" value={product.unit} onChange={(e) => setCurrentProduct({...product, unit: e.target.value})} placeholder="Đơn vị" required style={{...modalInputStyle, flex: 1}} />
+                </div>
+                <button type="submit" style={modalSaveButtonStyle}>Lưu Thay đổi</button>
+            </form>
+        </div>
+    </div>
+);
+
+const CreateProductModal = ({ onClose, onCreate }) => {
+    const [newProduct, setNewProduct] = useState({
+        name: '',
+        sku: '',
+        salePrice: 0,
+        costPrice: 0, 
+        unit: 'Cái'
+    });
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setNewProduct(prev => ({
+            ...prev,
+            // Đảm bảo giá trị số được parse
+            [name]: name === 'salePrice' || name === 'costPrice' ? parseFloat(value) : value
+        }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onCreate(newProduct);
+    };
+
+    return (
+        <div style={modalBackdropStyle}>
+            <div style={modalContentStyle}>
+                <div style={modalHeaderStyle}>
+                    <h3 style={{ margin: 0 }}>➕ Thêm Sản phẩm Mới</h3>
+                    <button onClick={onClose} style={closeButtonStyle}><FaTimes /></button>
+                </div>
+                <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '15px' }}>
+                    <input type="text" name="name" value={newProduct.name} onChange={handleChange} placeholder="Tên sản phẩm" required style={modalInputStyle} />
+                    <input type="text" name="sku" value={newProduct.sku} onChange={handleChange} placeholder="Mã SKU (Bắt buộc)" required style={modalInputStyle} />
+                    
+                    <input type="number" name="costPrice" value={newProduct.costPrice} onChange={handleChange} placeholder="Giá nhập/vốn (Cost Price)" min="0" required style={modalInputStyle} />
+                    
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        <input type="number" name="salePrice" value={newProduct.salePrice} onChange={handleChange} placeholder="Giá bán (Sale Price)" min="0" required style={{...modalInputStyle, flex: 1}} />
+                        <input type="text" name="unit" value={newProduct.unit} onChange={handleChange} placeholder="Đơn vị (VD: Cái, Hộp)" required style={{...modalInputStyle, flex: 1}} />
+                    </div>
+                    
+                    <button type="submit" style={modalSaveButtonStyle}>Tạo Sản phẩm</button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+
+// --- STYLES (Đã thêm styles cho nút mới) ---
+const searchInputStyle = { padding: '12px 15px', borderRadius: '10px', border: '2px solid #e5e7eb', width: '100%', fontSize: '1rem' };
+const tableStyle = { width: '100%', borderCollapse: 'collapse' };
+const tableHeaderRowStyle = { background: '#f9fafb' };
+const tableHeaderStyle = { padding: '1.5rem 1rem', textAlign: 'left', color: '#6b7280', fontWeight: 600, fontSize: '0.9rem' };
+const tableCellStyle = { padding: '1rem', color: '#374151' };
+const tableRowStyle = (i) => ({ borderBottom: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fcfcfc' : 'white' });
+const editButtonStyle = { background: '#f59e0b', color: 'white', border: 'none', borderRadius: '6px', padding: '8px 12px', cursor: 'pointer', transition: 'background 0.3s' };
+const deleteButtonStyle = { background: '#ef4444', color: 'white', border: 'none', borderRadius: '6px', padding: '8px 12px', cursor: 'pointer', transition: 'background 0.3s', marginLeft: '8px' }; // 💡 Style nút Xóa
+const createButtonStyle = { background: '#059669', color: 'white', border: 'none', borderRadius: '8px', padding: '12px 20px', cursor: 'pointer', transition: 'background 0.3s', fontWeight: 600, display: 'flex', alignItems: 'center' }; // 💡 Style nút Thêm mới
+const modalBackdropStyle = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0, 0, 0, 0.5)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
+const modalContentStyle = { background: 'white', padding: '30px', borderRadius: '15px', width: '90%', maxWidth: '500px', boxShadow: '0 25px 50px rgba(0,0,0,0.2)' };
+const modalHeaderStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid #e5e7eb', paddingBottom: '10px' };
+const closeButtonStyle = { background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#9ca3af' };
+const modalInputStyle = { padding: '12px', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '1rem' };
+const modalSaveButtonStyle = { padding: '12px 20px', background: '#047857', color: 'white', border: 'none', borderRadius: '8px', fontSize: '1rem', fontWeight: 600, cursor: 'pointer' };
+
 export default ProductsPage;
-
-

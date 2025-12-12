@@ -1,10 +1,10 @@
 // server/controllers/authController.js
 const User = require('../models/User');
-const jwt = require('jsonwebtoken'); // Để tạo token
+const jwt = require('jsonwebtoken');
 
 /**
- * @desc    Tạo JWT (JSON Web Token)
- * @param   {string} id - User ID
+ * @desc    Tạo JWT (JSON Web Token)
+ * @param   {string} id - User ID
  * @returns {string} Token
  */
 const generateToken = (id) => {
@@ -15,9 +15,9 @@ const generateToken = (id) => {
 };
 
 /**
- * @desc    Đăng ký người dùng mới
- * @route   POST /api/auth/register
- * @access  Public
+ * @desc    Đăng ký người dùng mới
+ * @route   POST /api/auth/register
+ * @access  Public
  */
 exports.registerUser = async (req, res) => {
     const { name, email, password } = req.body;
@@ -30,12 +30,12 @@ exports.registerUser = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Người dùng với email này đã tồn tại.' });
         }
 
-        // 2. Tạo người dùng mới (Password sẽ tự động mã hóa nhờ middleware pre-save trong User Model)
+        // 2. Tạo người dùng mới
         const user = await User.create({
             name,
             email,
             password,
-            // role sẽ lấy giá trị default là 'staff'
+            // role sẽ lấy giá trị default từ User Model (ví dụ: 'admin' hoặc 'staff')
         });
 
         if (user) {
@@ -60,19 +60,18 @@ exports.registerUser = async (req, res) => {
 };
 
 /**
- * @desc    Đăng nhập người dùng
- * @route   POST /api/auth/login
- * @access  Public
+ * @desc    Đăng nhập người dùng
+ * @route   POST /api/auth/login
+ * @access  Public
  */
 exports.loginUser = async (req, res) => {
     const { email, password } = req.body;
 
     try {
-        // 1. Tìm người dùng bằng email và chọn cả trường password (do select: false)
+        // 1. Tìm người dùng bằng email và chọn cả trường password
         const user = await User.findOne({ email }).select('+password');
 
         // 2. Kiểm tra tồn tại và so sánh mật khẩu
-        // User Model có phương thức .matchPassword để so sánh mật khẩu đã mã hóa
         if (user && (await user.matchPassword(password))) {
             // 3. Trả về thông tin người dùng và JWT
             res.json({
@@ -94,4 +93,29 @@ exports.loginUser = async (req, res) => {
     }
 };
 
-// ... Sẽ thêm getMe và Protect Middleware sau khi kiểm thử 2 hàm trên
+/**
+ * @desc    Lấy thông tin người dùng hiện tại (dựa trên JWT)
+ * @route   GET /api/auth/me
+ * @access  Private
+ */
+exports.getMe = async (req, res) => {
+    // req.user được gán bởi 'protect' middleware sau khi xác thực token
+    const user = await User.findById(req.user._id).select('-password'); 
+
+    if (user) {
+        res.status(200).json({
+            success: true,
+            data: {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+            },
+        });
+    } else {
+        res.status(404).json({ success: false, message: 'Không tìm thấy người dùng.' });
+    }
+};
+
+// 💡 Cấu trúc exports cuối cùng
+exports.generateToken = generateToken;

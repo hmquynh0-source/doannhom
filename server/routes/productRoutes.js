@@ -1,55 +1,23 @@
-// server/routes/productRoutes.js - CÓ DATA DEMO
+// server/routes/productRoutes.js
 const express = require('express');
 const router = express.Router();
+const productController = require('../controllers/ProductController');
+const authMiddleware = require('../middleware/authMiddleware'); // Nếu bạn có dùng middleware
 
-// DATA DEMO SẴN
-const demoProducts = [
-  { _id: '1', name: 'iPhone 15 Pro', unit: 'Cái', price: 25000000, quantity: 8 },
-  { _id: '2', name: 'Samsung S24 Ultra', unit: 'Cái', price: 22000000, quantity: 3 },
-  { _id: '3', name: 'MacBook Air M2', unit: 'Cái', price: 28000000, quantity: 5 },
-  { _id: '4', name: 'AirPods Pro 2', unit: 'Cái', price: 6500000, quantity: 12 }
-];
+// ----------------------------------------------------
+// DÙNG MONGO DB CONTROLLER THAY VÌ DATA DEMO CỐ ĐỊNH
+// ----------------------------------------------------
 
-// GET /api/products
-router.get('/', (req, res) => {
-  res.json({
-    success: true,
-    data: demoProducts
-  });
-});
+// GET /api/products - Lấy TẤT CẢ sản phẩm từ MongoDB
+router.get('/', productController.getProducts);
 
-// POST /api/products - Thêm mới
-router.post('/', (req, res) => {
-  const newProduct = {
-    _id: Date.now().toString(),
-    ...req.body
-  };
-  demoProducts.push(newProduct);
-  res.json({ success: true, data: newProduct });
-});
+// POST /api/products - Thêm sản phẩm mới vào MongoDB
+router.post('/', productController.createProduct);
 
-// PUT /api/products/:id - Sửa
-router.put('/:id', (req, res) => {
-  const id = req.params.id;
-  const index = demoProducts.findIndex(p => p._id === id);
-  if (index !== -1) {
-    demoProducts[index] = { ...demoProducts[index], ...req.body };
-    res.json({ success: true, data: demoProducts[index] });
-  } else {
-    res.status(404).json({ success: false, message: 'Sản phẩm không tồn tại' });
-  }
-});
+// PUT /api/products/:id - Cập nhật sản phẩm
+router.put('/:id', productController.updateProduct);
 
-// DELETE /api/products/:id
-router.delete('/:id', (req, res) => {
-  const id = req.params.id;
-  const index = demoProducts.findIndex(p => p._id === id);
-  if (index !== -1) {
-    demoProducts.splice(index, 1);
-    res.json({ success: true, message: 'Xóa thành công' });
-  } else {
-    res.status(404).json({ success: false, message: 'Sản phẩm không tồn tại' });
-  }
-});
+// DELETE /api/products/:id - Xóa sản phẩm
+router.delete('/:id', productController.deleteProduct);
 
 module.exports = router;
