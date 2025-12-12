@@ -3,8 +3,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Link, useLocation } from 'react-router-dom';
 import { 
-    FiMenu, FiX, FiHome, FiPackage, FiLogIn, FiLogOut, FiBarChart2 
+    FiMenu, FiX, FiHome, FiPackage, FiLogIn, FiLogOut, FiBarChart2, 
+    FiTruck, FiUsers // Thêm icon FiTruck hoặc FiUsers cho Nhà cung cấp
 } from 'react-icons/fi';
+// HOẶC: Nếu muốn dùng FaUserTag như trong SuppliersPage, bạn cần import từ 'react-icons/fa'
 
 const DashboardLayout = ({ children }) => {
     const { userName, logout } = useAuth();
@@ -38,7 +40,7 @@ const DashboardLayout = ({ children }) => {
         padding: '15px 20px', 
         textDecoration: 'none',
         transition: 'all 0.2s',
-        // Kiểm tra active (sử dụng startsWith cho transactions)
+        // Kiểm tra active (sử dụng startsWith cho transactions và báo cáo)
         backgroundColor: location.pathname.startsWith(path) ? '#e0e7ff' : 'transparent', 
         color: location.pathname.startsWith(path) ? '#4f46e5' : '#374151', 
         borderLeft: location.pathname.startsWith(path) ? '4px solid #4f46e5' : '4px solid transparent',
@@ -46,14 +48,17 @@ const DashboardLayout = ({ children }) => {
         fontWeight: location.pathname.startsWith(path) ? '600' : '400',
     });
     
-    // CẬP NHẬT ĐƯỜNG DẪN ĐỘNG
+    // CẬP NHẬT ĐƯỜNG DẪN ĐỘNG & BỔ SUNG NHÀ CUNG CẤP
     const navItems = [
-        { path: '/', label: 'Trang Chủ', icon: <FiHome style={{ marginRight: '10px' }} /> }, 
-        { path: '/products', label: 'Sản phẩm', icon: <FiPackage style={{ marginRight: '10px' }} /> },
-        { path: '/transactions/inbound', label: 'Nhập kho', icon: <FiLogIn style={{ marginRight: '10px' }} /> }, 
-        { path: '/transactions/outbound', label: 'Xuất kho', icon: <FiLogOut style={{ marginRight: '10px' }} /> }, 
-        { path: '/reports', label: 'Báo cáo', icon: <FiBarChart2 style={{ marginRight: '10px' }} /> },
-    ];
+    { path: '/', label: 'Trang Chủ', icon: <FiHome style={{ marginRight: '10px' }} /> }, 
+    { path: '/products', label: 'Sản phẩm', icon: <FiPackage style={{ marginRight: '10px' }} /> },
+   
+    { path: '/categories', label: 'Loại SP', icon: <FiUsers style={{ marginRight: '10px' }} /> }, // Dùng FiUsers hoặc FaTags (nếu import)
+    { path: '/suppliers', label: 'Nhà cung cấp', icon: <FiTruck style={{ marginRight: '10px' }} /> }, 
+    { path: '/transactions/inbound', label: 'Nhập kho', icon: <FiLogIn style={{ marginRight: '10px' }} /> }, 
+    { path: '/transactions/outbound', label: 'Xuất kho', icon: <FiLogOut style={{ marginRight: '10px' }} /> }, 
+    { path: '/reports', label: 'Báo cáo', icon: <FiBarChart2 style={{ marginRight: '10px' }} /> },
+];
     
     // Logic tìm tiêu đề trang
     const currentTitle = navItems.find(item => 

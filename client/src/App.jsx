@@ -10,7 +10,9 @@ import RegisterPage from './pages/RegisterPage';
 import HomePage from './pages/HomePage'; 
 import ProductsPage from './pages/ProductsPage';
 import TransactionsPage from './pages/TransactionsPage'; 
-import ReportsPage from './pages/ReportsPage'; // <--- BỔ SUNG IMPORT TRANG BÁO CÁO
+import ReportsPage from './pages/ReportsPage'; 
+import SuppliersPage from './pages/SuppliersPage'; // <--- BỔ SUNG IMPORT TRANG NHÀ CUNG CẤP
+import CategoriesPage from './pages/CategoriesPage';
 
 // Component Layout
 import DashboardLayout from './components/DashboardLayout'; 
@@ -34,10 +36,15 @@ const LayoutWrapper = () => {
                 {/* Trang Quản lý Sản phẩm */}
                 <Route path="/products" element={<ProductsPage />} />
                 
+                {/* Trang Quản lý Nhà cung cấp */}
+                <Route path="/suppliers" element={<SuppliersPage />} /> {/* <--- BỔ SUNG ROUTE NHÀ CUNG CẤP */}
+                
+                <Route path="categories" element={<CategoriesPage />} />
+                
                 {/* Trang Giao dịch (Nhập/Xuất kho) - Dùng tham số động */}
                 <Route path="/transactions/:type" element={<TransactionsPage />} />
                 
-                {/* Trang Báo cáo: THAY THẾ NỘI DUNG XÂY DỰNG BẰNG COMPONENT REPORTSPAGE */}
+                {/* Trang Báo cáo */}
                 <Route path="/reports" element={<ReportsPage />} />
 
                 {/* Xử lý 404 */}
